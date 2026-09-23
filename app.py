@@ -2,51 +2,42 @@ import streamlit as st
 import faiss
 import pickle
 import numpy as np
+import os
 
 from sentence_transformers import SentenceTransformer
 from groq import Groq
 
 
-# ==========================
+# ==============================
 # PAGE CONFIG
-# ==========================
+# ==============================
 
 st.set_page_config(
-    page_title="Daraz Customer Support Assistant",
+    page_title="Daraz AI Support Assistant",
     page_icon="🛒",
     layout="wide"
 )
 
 
-# ==========================
-# DARAZ STYLE CSS
-# ==========================
+# ==============================
+# DARAZ UI STYLE
+# ==============================
 
 st.markdown(
 """
 <style>
 
-.main {
+.stApp {
     background-color:#f7f7f7;
 }
-
 
 h1 {
     color:#f85606;
 }
 
-
-.sidebar .sidebar-content {
+[data-testid="stSidebar"] {
     background-color:#ffffff;
 }
-
-
-.chat-message {
-    padding:15px;
-    border-radius:10px;
-    margin-bottom:10px;
-}
-
 
 </style>
 """,
@@ -55,24 +46,71 @@ unsafe_allow_html=True
 
 
 
-# ==========================
-# LOAD FAISS
-# ==========================
+# ==============================
+# LOAD FAISS DATABASE
+# ==============================
 
 @st.cache_resource
 def load_database():
 
+    index_path = "faiss_index/index.faiss"
+    metadata_path = "faiss_index/metadata.pkl"
+
+
+    # Debug check
+
+    if not os.path.exists(index_path):
+
+        st.error(
+            """
+            FAISS index not found.
+
+            Required file:
+            faiss_index/index.faiss
+
+            Please upload your FAISS folder to GitHub.
+            """
+        )
+
+        st.stop()
+
+
+
+    if not os.path.exists(metadata_path):
+
+        st.error(
+            """
+            Metadata file not found.
+
+            Required file:
+            faiss_index/metadata.pkl
+            """
+        )
+
+        st.stop()
+
+
+
+    # Load FAISS
+
     index = faiss.read_index(
-        "faiss_index/index.faiss"
+        index_path
     )
 
+
+    # Load metadata
+
     with open(
-        "faiss_index/metadata.pkl",
+        metadata_path,
         "rb"
     ) as f:
 
         metadata = pickle.load(f)
 
+
+
+    # Load embedding model only
+    # No PDF processing happens here
 
     model = SentenceTransformer(
         "sentence-transformers/all-MiniLM-L6-v2"
@@ -87,10 +125,9 @@ index, metadata, embedding_model = load_database()
 
 
 
-# ==========================
+# ==============================
 # GROQ CLIENT
-# ==========================
-
+# ==============================
 
 client = Groq(
     api_key=st.secrets["GROQ_API_KEY"]
@@ -98,22 +135,17 @@ client = Groq(
 
 
 
-# ==========================
+# ==============================
 # SIDEBAR
-# ==========================
-
-st.sidebar.image(
-    "https://upload.wikimedia.org/wikipedia/commons/7/7e/Daraz_Logo.png",
-    width=150
-)
-
+# ==============================
 
 st.sidebar.title(
-    "Knowledge Base"
+    "🛒 Daraz Knowledge Base"
 )
 
 
 departments = [
+
     "All Sections",
     "returns",
     "delivery",
@@ -121,11 +153,12 @@ departments = [
     "sellers",
     "payments",
     "customer_support"
+
 ]
 
 
-selected_department = st.sidebar.selectbox(
-    "Choose Section",
+selected_section = st.sidebar.selectbox(
+    "Search Section",
     departments
 )
 
@@ -133,37 +166,40 @@ selected_department = st.sidebar.selectbox(
 
 st.sidebar.markdown("---")
 
-st.sidebar.info(
-"""
-🛒 Daraz Customer Support Operations Assistant
 
-Ask questions about:
-- Orders
-- Payments
-- Delivery
-- Returns
-- Refunds
-- Sellers
+st.sidebar.success(
+f"""
+FAISS Database Loaded
+
+Vectors:
+{index.ntotal}
+
+Section:
+{selected_section}
 """
 )
 
 
 
-# ==========================
-# RETRIEVAL FUNCTION
-# ==========================
+# ==============================
+# SEARCH FUNCTION
+# ==============================
 
-def search_documents(query, department, k=3):
+def retrieve_chunks(
+        query,
+        department,
+        k=3
+):
 
 
-    query_embedding = embedding_model.encode(
+    query_vector = embedding_model.encode(
         [query],
         normalize_embeddings=True
     )
 
 
     scores, ids = index.search(
-        np.array(query_embedding),
+        np.array(query_vector),
         len(metadata)
     )
 
@@ -171,7 +207,10 @@ def search_documents(query, department, k=3):
     results=[]
 
 
-    for score, idx in zip(scores[0], ids[0]):
+    for score, idx in zip(
+        scores[0],
+        ids[0]
+    ):
 
         item = metadata[idx]
 
@@ -182,39 +221,46 @@ def search_documents(query, department, k=3):
                 continue
 
 
+
         results.append(
             {
-                "score":float(score),
-                "text":item["text"],
-                "department":item["department"],
-                "source":item["source_file"]
+                "text": item["text"],
+                "department": item["department"],
+                "source": item["source_file"],
+                "score": float(score)
             }
         )
 
 
-        if len(results)==k:
+
+        if len(results) >= k:
             break
+
 
 
     return results
 
 
 
-# ==========================
-# GROQ RESPONSE
-# ==========================
+# ==============================
+# GROQ ANSWER GENERATION
+# ==============================
 
-def generate_answer(question, context):
+def generate_answer(
+        question,
+        context
+):
 
 
-    prompt=f"""
+    prompt = f"""
+
 You are Daraz Customer Support Operations Assistant.
 
-Answer ONLY using the provided knowledge base.
+Answer the customer question using ONLY the provided knowledge base.
 
-If the answer is not available in the context,
-say:
+If information is missing, clearly say:
 "I could not find this information in the Daraz knowledge base."
+
 
 Knowledge Base:
 
@@ -225,7 +271,9 @@ Customer Question:
 
 {question}
 
-Provide a clear professional support answer.
+
+Give a professional and helpful support response.
+
 """
 
 
@@ -234,20 +282,24 @@ Provide a clear professional support answer.
         model="openai/gpt-oss-120b",
 
         messages=[
+
             {
                 "role":"system",
                 "content":
-                "You are a helpful Daraz support assistant."
+                "You are a Daraz customer support expert."
             },
+
             {
                 "role":"user",
                 "content":prompt
             }
+
         ],
 
         temperature=0.2,
 
-        max_tokens=800
+        max_tokens=700
+
     )
 
 
@@ -255,9 +307,9 @@ Provide a clear professional support answer.
 
 
 
-# ==========================
-# MAIN UI
-# ==========================
+# ==============================
+# CHAT UI
+# ==============================
 
 
 st.title(
@@ -266,7 +318,7 @@ st.title(
 
 
 st.caption(
-"AI assistant powered by Daraz Knowledge Base + FAISS + Groq"
+"AI powered support assistant using FAISS Knowledge Base + Groq LLM"
 )
 
 
@@ -277,16 +329,20 @@ if "messages" not in st.session_state:
 
 
 
-for msg in st.session_state.messages:
+for message in st.session_state.messages:
 
-    with st.chat_message(msg["role"]):
+    with st.chat_message(
+        message["role"]
+    ):
 
-        st.write(msg["content"])
+        st.write(
+            message["content"]
+        )
 
 
 
 question = st.chat_input(
-"Ask your Daraz support question..."
+"Ask a Daraz operations question..."
 )
 
 
@@ -302,29 +358,41 @@ if question:
     )
 
 
+
     with st.chat_message("user"):
+
         st.write(question)
 
 
 
-    results = search_documents(
+    documents = retrieve_chunks(
         question,
-        selected_department
+        selected_section
     )
 
 
-    context="\n\n".join(
-        [
-            r["text"]
-            for r in results
-        ]
-    )
+    if documents:
+
+        context="\n\n".join(
+            [
+                doc["text"]
+                for doc in documents
+            ]
+        )
 
 
-    answer = generate_answer(
-        question,
-        context
-    )
+        answer = generate_answer(
+            question,
+            context
+        )
+
+
+    else:
+
+        answer = (
+            "I could not find relevant information "
+            "in the selected knowledge base section."
+        )
 
 
 
@@ -334,20 +402,21 @@ if question:
 
 
         with st.expander(
-            "📚 Retrieved Sources"
+            "📚 Sources Used"
         ):
 
-            for r in results:
+            for doc in documents:
 
                 st.write(
-                f"""
-                **Department:** {r['department']}
+f"""
+**Department:** {doc['department']}
 
-                **Source:** {r['source']}
+**File:** {doc['source']}
 
-                **Similarity:** {r['score']:.3f}
-                """
+**Similarity:** {doc['score']:.3f}
+"""
                 )
+
 
 
     st.session_state.messages.append(
