@@ -8,9 +8,9 @@ from sentence_transformers import SentenceTransformer
 from groq import Groq
 
 
-# ==============================
+# =====================================
 # PAGE CONFIG
-# ==============================
+# =====================================
 
 st.set_page_config(
     page_title="Daraz AI Support Assistant",
@@ -19,36 +19,69 @@ st.set_page_config(
 )
 
 
-# ==============================
-# DARAZ UI STYLE
-# ==============================
+# =====================================
+# CUSTOM CSS
+# =====================================
 
 st.markdown(
 """
 <style>
 
 .stApp {
-    background-color:#f7f7f7;
+    background:#f7f7f7;
 }
+
+
+/* Main title */
 
 h1 {
     color:#f85606;
+    font-weight:700;
 }
+
+
+/* Sidebar */
 
 [data-testid="stSidebar"] {
-    background-color:#ffffff;
+
+    background:white;
+
 }
 
+
+/* Chat boxes */
+
+.stChatMessage {
+
+    border-radius:15px;
+
+}
+
+
+/* Buttons */
+
+.stButton button {
+
+    border-radius:20px;
+    border:none;
+    background:#f85606;
+    color:white;
+
+}
+
+
 </style>
+
 """,
 unsafe_allow_html=True
 )
 
 
 
-# ==============================
+# =====================================
 # LOAD FAISS DATABASE
-# ==============================
+# =====================================
+
 
 @st.cache_resource
 def load_database():
@@ -57,19 +90,15 @@ def load_database():
     metadata_path = "faiss_index/metadata.pkl"
 
 
-    # Debug check
-
     if not os.path.exists(index_path):
 
         st.error(
-            """
-            FAISS index not found.
+        """
+        ❌ FAISS index not found.
 
-            Required file:
-            faiss_index/index.faiss
-
-            Please upload your FAISS folder to GitHub.
-            """
+        Please upload:
+        faiss_index/index.faiss
+        """
         )
 
         st.stop()
@@ -79,26 +108,22 @@ def load_database():
     if not os.path.exists(metadata_path):
 
         st.error(
-            """
-            Metadata file not found.
+        """
+        ❌ Metadata file missing.
 
-            Required file:
-            faiss_index/metadata.pkl
-            """
+        Please upload:
+        faiss_index/metadata.pkl
+        """
         )
 
         st.stop()
 
 
 
-    # Load FAISS
-
     index = faiss.read_index(
         index_path
     )
 
-
-    # Load metadata
 
     with open(
         metadata_path,
@@ -109,9 +134,6 @@ def load_database():
 
 
 
-    # Load embedding model only
-    # No PDF processing happens here
-
     model = SentenceTransformer(
         "sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -121,13 +143,15 @@ def load_database():
 
 
 
+
 index, metadata, embedding_model = load_database()
 
 
 
-# ==============================
-# GROQ CLIENT
-# ==============================
+# =====================================
+# GROQ
+# =====================================
+
 
 client = Groq(
     api_key=st.secrets["GROQ_API_KEY"]
@@ -135,31 +159,39 @@ client = Groq(
 
 
 
-# ==============================
+# =====================================
 # SIDEBAR
-# ==============================
+# =====================================
 
-st.sidebar.title(
-    "🛒 Daraz Knowledge Base"
+
+st.sidebar.markdown(
+"""
+# 🛒 Daraz AI Assistant
+
+Your intelligent customer support operations assistant.
+
+---
+"""
 )
 
 
-departments = [
 
-    "All Sections",
-    "returns",
-    "delivery",
-    "refunds",
-    "sellers",
-    "payments",
-    "customer_support"
+sections = [
+
+"All Sections",
+"returns",
+"delivery",
+"refunds",
+"sellers",
+"payments",
+"customer_support"
 
 ]
 
 
-selected_section = st.sidebar.selectbox(
-    "Search Section",
-    departments
+selected_section = st.sidebar.radio(
+    "📚 Select Knowledge Section",
+    sections
 )
 
 
@@ -169,42 +201,77 @@ st.sidebar.markdown("---")
 
 st.sidebar.success(
 f"""
-FAISS Database Loaded
+🟢 System Online
 
-Vectors:
+
+FAISS Database:
+Loaded
+
+
+Knowledge Vectors:
 {index.ntotal}
 
-Section:
+
+Active Section:
 {selected_section}
+
+
+AI Model:
+GPT OSS 120B
 """
 )
 
 
 
-# ==============================
-# SEARCH FUNCTION
-# ==============================
+st.sidebar.markdown("---")
+
+
+st.sidebar.markdown(
+"""
+### 💡 Example Questions
+
+• How can I track my order?
+
+• What payment methods are available?
+
+• How can I request refund?
+
+• How to return product?
+
+• Seller requirements?
+"""
+)
+
+
+
+
+# =====================================
+# RETRIEVAL
+# =====================================
+
 
 def retrieve_chunks(
-        query,
-        department,
-        k=3
+    query,
+    department,
+    k=3
 ):
 
 
-    query_vector = embedding_model.encode(
+    query_embedding = embedding_model.encode(
         [query],
         normalize_embeddings=True
     )
 
 
     scores, ids = index.search(
-        np.array(query_vector),
+        np.array(query_embedding),
         len(metadata)
     )
 
 
+
     results=[]
+
 
 
     for score, idx in zip(
@@ -212,28 +279,39 @@ def retrieve_chunks(
         ids[0]
     ):
 
+
         item = metadata[idx]
+
 
 
         if department != "All Sections":
 
             if item["department"] != department:
+
                 continue
 
 
 
         results.append(
+
             {
-                "text": item["text"],
-                "department": item["department"],
-                "source": item["source_file"],
-                "score": float(score)
+
+            "text":item["text"],
+
+            "department":item["department"],
+
+            "source":item["source_file"],
+
+            "score":float(score)
+
             }
+
         )
 
 
 
-        if len(results) >= k:
+        if len(results)>=k:
+
             break
 
 
@@ -242,25 +320,25 @@ def retrieve_chunks(
 
 
 
-# ==============================
-# GROQ ANSWER GENERATION
-# ==============================
+
+# =====================================
+# GROQ ANSWER
+# =====================================
+
 
 def generate_answer(
-        question,
-        context
+    question,
+    context
 ):
 
 
-    prompt = f"""
+    prompt=f"""
 
 You are Daraz Customer Support Operations Assistant.
 
-Answer the customer question using ONLY the provided knowledge base.
+Answer only from the provided knowledge base.
 
-If information is missing, clearly say:
-"I could not find this information in the Daraz knowledge base."
-
+If information is unavailable, explain politely.
 
 Knowledge Base:
 
@@ -272,7 +350,7 @@ Customer Question:
 {question}
 
 
-Give a professional and helpful support response.
+Provide a concise professional support answer.
 
 """
 
@@ -284,14 +362,14 @@ Give a professional and helpful support response.
         messages=[
 
             {
-                "role":"system",
-                "content":
-                "You are a Daraz customer support expert."
+            "role":"system",
+            "content":
+            "You are an expert Daraz support agent."
             },
 
             {
-                "role":"user",
-                "content":prompt
+            "role":"user",
+            "content":prompt
             }
 
         ],
@@ -307,9 +385,10 @@ Give a professional and helpful support response.
 
 
 
-# ==============================
-# CHAT UI
-# ==============================
+
+# =====================================
+# MAIN UI
+# =====================================
 
 
 st.title(
@@ -317,9 +396,59 @@ st.title(
 )
 
 
-st.caption(
-"AI powered support assistant using FAISS Knowledge Base + Groq LLM"
+
+st.markdown(
+"""
+### 🤖 AI-powered support assistant
+
+Ask questions related to:
+
+📦 Orders  
+🚚 Delivery  
+💳 Payments  
+🔄 Returns  
+💰 Refunds  
+🏪 Sellers  
+
+"""
 )
+
+
+
+# Quick questions
+
+
+st.subheader(
+"⚡ Quick Questions"
+)
+
+
+
+quick_questions=[
+
+"How can I track my order?",
+
+"What payment options are available?",
+
+"How do I request a refund?",
+
+"What are seller requirements?"
+
+]
+
+
+
+cols=st.columns(4)
+
+
+
+for col,q in zip(cols,quick_questions):
+
+    if col.button(q):
+
+        st.session_state.question=q
+
+
 
 
 
@@ -329,32 +458,46 @@ if "messages" not in st.session_state:
 
 
 
-for message in st.session_state.messages:
+
+for msg in st.session_state.messages:
 
     with st.chat_message(
-        message["role"]
+        msg["role"]
     ):
 
         st.write(
-            message["content"]
+            msg["content"]
         )
 
 
 
+
 question = st.chat_input(
-"Ask a Daraz operations question..."
+"Ask your Daraz question..."
 )
+
+
+
+if "question" in st.session_state:
+
+    question=st.session_state.question
+
+    del st.session_state.question
+
 
 
 
 if question:
 
 
+
     st.session_state.messages.append(
+
         {
-            "role":"user",
-            "content":question
+        "role":"user",
+        "content":question
         }
+
     )
 
 
@@ -365,63 +508,101 @@ if question:
 
 
 
-    documents = retrieve_chunks(
+    results = retrieve_chunks(
+
         question,
+
         selected_section
+
     )
 
 
-    if documents:
+
+    if results:
+
 
         context="\n\n".join(
+
             [
-                doc["text"]
-                for doc in documents
+            r["text"]
+
+            for r in results
+
             ]
+
         )
 
 
-        answer = generate_answer(
+        answer=generate_answer(
+
             question,
+
             context
+
         )
 
 
     else:
 
-        answer = (
-            "I could not find relevant information "
-            "in the selected knowledge base section."
-        )
+
+        answer="""
+
+I could not find this information in the current Daraz knowledge base.
+
+Available sections:
+
+• Returns
+• Delivery
+• Refunds
+• Payments
+• Sellers
+• Customer Support
+
+Please ask a question related to these topics.
+
+"""
+
 
 
 
     with st.chat_message("assistant"):
 
+
         st.write(answer)
 
 
-        with st.expander(
-            "📚 Sources Used"
-        ):
 
-            for doc in documents:
+        if results:
 
-                st.write(
+
+            with st.expander(
+                "📚 Knowledge Sources"
+            ):
+
+
+                for r in results:
+
+
+                    st.markdown(
+
 f"""
-**Department:** {doc['department']}
+**Department:** {r['department']}
 
-**File:** {doc['source']}
+**Source:** {r['source']}
 
-**Similarity:** {doc['score']:.3f}
+**Similarity Score:** {r['score']:.3f}
+
+---
 """
-                )
+                    )
 
 
 
     st.session_state.messages.append(
+
         {
-            "role":"assistant",
-            "content":answer
+        "role":"assistant",
+        "content":answer
         }
+
     )
