@@ -8,9 +8,9 @@ from sentence_transformers import SentenceTransformer
 from groq import Groq
 
 
-# =====================================
+# ==========================================
 # PAGE CONFIG
-# =====================================
+# ==========================================
 
 st.set_page_config(
     page_title="Daraz AI Support Assistant",
@@ -19,28 +19,23 @@ st.set_page_config(
 )
 
 
-# =====================================
-# CUSTOM CSS
-# =====================================
+# ==========================================
+# UI STYLE
+# ==========================================
 
 st.markdown(
 """
 <style>
 
 .stApp {
-    background:#f7f7f7;
+    background-color:#f7f7f7;
 }
 
-
-/* Main title */
 
 h1 {
     color:#f85606;
-    font-weight:700;
 }
 
-
-/* Sidebar */
 
 [data-testid="stSidebar"] {
 
@@ -49,8 +44,6 @@ h1 {
 }
 
 
-/* Chat boxes */
-
 .stChatMessage {
 
     border-radius:15px;
@@ -58,17 +51,11 @@ h1 {
 }
 
 
-/* Buttons */
+button {
 
-.stButton button {
-
-    border-radius:20px;
-    border:none;
-    background:#f85606;
-    color:white;
+    border-radius:20px !important;
 
 }
-
 
 </style>
 
@@ -78,27 +65,25 @@ unsafe_allow_html=True
 
 
 
-# =====================================
+# ==========================================
 # LOAD FAISS DATABASE
-# =====================================
+# ==========================================
 
 
 @st.cache_resource
 def load_database():
 
-    index_path = "faiss_index/index.faiss"
-    metadata_path = "faiss_index/metadata.pkl"
+
+    index_path="faiss_index/index.faiss"
+
+    metadata_path="faiss_index/metadata.pkl"
+
 
 
     if not os.path.exists(index_path):
 
         st.error(
-        """
-        ❌ FAISS index not found.
-
-        Please upload:
-        faiss_index/index.faiss
-        """
+        "FAISS index missing. Upload faiss_index/index.faiss"
         )
 
         st.stop()
@@ -108,21 +93,17 @@ def load_database():
     if not os.path.exists(metadata_path):
 
         st.error(
-        """
-        ❌ Metadata file missing.
-
-        Please upload:
-        faiss_index/metadata.pkl
-        """
+        "Metadata missing. Upload faiss_index/metadata.pkl"
         )
 
         st.stop()
 
 
 
-    index = faiss.read_index(
+    index=faiss.read_index(
         index_path
     )
+
 
 
     with open(
@@ -130,13 +111,14 @@ def load_database():
         "rb"
     ) as f:
 
-        metadata = pickle.load(f)
+        metadata=pickle.load(f)
 
 
 
-    model = SentenceTransformer(
+    model=SentenceTransformer(
         "sentence-transformers/all-MiniLM-L6-v2"
     )
+
 
 
     return index, metadata, model
@@ -148,9 +130,9 @@ index, metadata, embedding_model = load_database()
 
 
 
-# =====================================
+# ==========================================
 # GROQ
-# =====================================
+# ==========================================
 
 
 client = Groq(
@@ -159,16 +141,16 @@ client = Groq(
 
 
 
-# =====================================
+# ==========================================
 # SIDEBAR
-# =====================================
+# ==========================================
 
 
 st.sidebar.markdown(
 """
 # 🛒 Daraz AI Assistant
 
-Your intelligent customer support operations assistant.
+Customer Support + Marketplace Knowledge Assistant
 
 ---
 """
@@ -176,7 +158,7 @@ Your intelligent customer support operations assistant.
 
 
 
-sections = [
+sections=[
 
 "All Sections",
 "returns",
@@ -189,9 +171,13 @@ sections = [
 ]
 
 
-selected_section = st.sidebar.radio(
-    "📚 Select Knowledge Section",
+
+selected_section=st.sidebar.radio(
+
+    "📚 Knowledge Section",
+
     sections
+
 )
 
 
@@ -199,26 +185,26 @@ selected_section = st.sidebar.radio(
 st.sidebar.markdown("---")
 
 
+
 st.sidebar.success(
+
 f"""
 🟢 System Online
 
 
-FAISS Database:
-Loaded
-
-
-Knowledge Vectors:
+Vectors:
 {index.ntotal}
 
 
-Active Section:
+Mode:
+Hybrid RAG + AI
+
+
+Section:
 {selected_section}
 
-
-AI Model:
-GPT OSS 120B
 """
+
 )
 
 
@@ -228,44 +214,49 @@ st.sidebar.markdown("---")
 
 st.sidebar.markdown(
 """
-### 💡 Example Questions
+### Example Questions
 
-• How can I track my order?
+📦 How do I return an order?
 
-• What payment methods are available?
+🚚 How can I track delivery?
 
-• How can I request refund?
+💳 Payment failed
 
-• How to return product?
+🏪 How to become seller?
 
-• Seller requirements?
+🛒 Daraz vs Amazon?
 """
 )
 
 
 
-
-# =====================================
+# ==========================================
 # RETRIEVAL
-# =====================================
+# ==========================================
 
 
 def retrieve_chunks(
-    query,
-    department,
-    k=3
+        query,
+        department,
+        k=5
 ):
 
 
-    query_embedding = embedding_model.encode(
+    query_vector=embedding_model.encode(
+
         [query],
+
         normalize_embeddings=True
+
     )
 
 
-    scores, ids = index.search(
-        np.array(query_embedding),
+    scores, ids=index.search(
+
+        np.array(query_vector),
+
         len(metadata)
+
     )
 
 
@@ -280,13 +271,13 @@ def retrieve_chunks(
     ):
 
 
-        item = metadata[idx]
+        item=metadata[idx]
 
 
 
-        if department != "All Sections":
+        if department!="All Sections":
 
-            if item["department"] != department:
+            if item["department"]!=department:
 
                 continue
 
@@ -321,28 +312,37 @@ def retrieve_chunks(
 
 
 
-# =====================================
-# GROQ ANSWER
-# =====================================
+# ==========================================
+# AI GENERATION
+# ==========================================
 
 
 def generate_answer(
-    question,
-    context
+
+        question,
+
+        context=None,
+
+        use_rag=True
+
 ):
 
 
-    prompt=f"""
+
+    if use_rag:
+
+
+        prompt=f"""
 
 You are Daraz Customer Support Operations Assistant.
 
-Answer only from the provided knowledge base.
+Answer using the provided internal knowledge base.
 
-If information is unavailable, explain politely.
 
 Knowledge Base:
 
 {context}
+
 
 
 Customer Question:
@@ -350,35 +350,75 @@ Customer Question:
 {question}
 
 
-Provide a concise professional support answer.
+
+Rules:
+
+- Use only relevant information.
+- Do not invent policies.
+- Be professional and concise.
 
 """
 
 
-    response = client.chat.completions.create(
+    else:
+
+
+        prompt=f"""
+
+You are a helpful ecommerce assistant.
+
+Answer this general Daraz question.
+
+
+Question:
+
+{question}
+
+
+
+Rules:
+
+- Provide useful general information.
+- Do not make up exact commission rates,
+fees, or policies.
+- Mention when official seller documentation is required.
+
+"""
+
+
+
+
+    response=client.chat.completions.create(
 
         model="openai/gpt-oss-120b",
 
         messages=[
 
             {
+
             "role":"system",
+
             "content":
-            "You are an expert Daraz support agent."
+            "You are an expert ecommerce assistant."
+
             },
 
             {
+
             "role":"user",
+
             "content":prompt
+
             }
 
         ],
 
-        temperature=0.2,
+        temperature=0.3,
 
-        max_tokens=700
+        max_tokens=800
 
     )
+
 
 
     return response.choices[0].message.content
@@ -386,9 +426,10 @@ Provide a concise professional support answer.
 
 
 
-# =====================================
-# MAIN UI
-# =====================================
+
+# ==========================================
+# MAIN PAGE
+# ==========================================
 
 
 st.title(
@@ -397,59 +438,35 @@ st.title(
 
 
 
-st.markdown(
+st.caption(
 """
-### 🤖 AI-powered support assistant
+AI assistant for Daraz operations, sellers, payments, delivery and marketplace questions.
+"""
+)
 
-Ask questions related to:
 
-📦 Orders  
-🚚 Delivery  
-💳 Payments  
-🔄 Returns  
-💰 Refunds  
-🏪 Sellers  
+
+st.info(
+"""
+Try asking:
+
+• How do I return my order?
+
+• What payment options are available?
+
+• What is Daraz commission?
+
+• Difference between Daraz and Amazon?
 
 """
 )
 
 
 
-# Quick questions
 
-
-st.subheader(
-"⚡ Quick Questions"
-)
-
-
-
-quick_questions=[
-
-"How can I track my order?",
-
-"What payment options are available?",
-
-"How do I request a refund?",
-
-"What are seller requirements?"
-
-]
-
-
-
-cols=st.columns(4)
-
-
-
-for col,q in zip(cols,quick_questions):
-
-    if col.button(q):
-
-        st.session_state.question=q
-
-
-
+# ==========================================
+# CHAT MEMORY
+# ==========================================
 
 
 if "messages" not in st.session_state:
@@ -461,6 +478,7 @@ if "messages" not in st.session_state:
 
 for msg in st.session_state.messages:
 
+
     with st.chat_message(
         msg["role"]
     ):
@@ -471,18 +489,11 @@ for msg in st.session_state.messages:
 
 
 
+question=st.chat_input(
 
-question = st.chat_input(
 "Ask your Daraz question..."
+
 )
-
-
-
-if "question" in st.session_state:
-
-    question=st.session_state.question
-
-    del st.session_state.question
 
 
 
@@ -490,12 +501,14 @@ if "question" in st.session_state:
 if question:
 
 
-
     st.session_state.messages.append(
 
         {
+
         "role":"user",
+
         "content":question
+
         }
 
     )
@@ -508,7 +521,7 @@ if question:
 
 
 
-    results = retrieve_chunks(
+    results=retrieve_chunks(
 
         question,
 
@@ -518,12 +531,18 @@ if question:
 
 
 
-    if results:
+    # ==============================
+    # ROUTING LOGIC
+    # ==============================
+
+
+    if results and results[0]["score"] >= 0.35:
 
 
         context="\n\n".join(
 
             [
+
             r["text"]
 
             for r in results
@@ -537,30 +556,33 @@ if question:
 
             question,
 
-            context
+            context,
+
+            True
 
         )
+
+
+        used_sources=True
+
 
 
     else:
 
 
-        answer="""
+        answer=generate_answer(
 
-I could not find this information in the current Daraz knowledge base.
+            question,
 
-Available sections:
+            None,
 
-• Returns
-• Delivery
-• Refunds
-• Payments
-• Sellers
-• Customer Support
+            False
 
-Please ask a question related to these topics.
+        )
 
-"""
+
+        used_sources=False
+
 
 
 
@@ -572,7 +594,7 @@ Please ask a question related to these topics.
 
 
 
-        if results:
+        if used_sources:
 
 
             with st.expander(
@@ -590,7 +612,7 @@ f"""
 
 **Source:** {r['source']}
 
-**Similarity Score:** {r['score']:.3f}
+**Similarity:** {r['score']:.3f}
 
 ---
 """
@@ -601,8 +623,11 @@ f"""
     st.session_state.messages.append(
 
         {
+
         "role":"assistant",
+
         "content":answer
+
         }
 
     )
